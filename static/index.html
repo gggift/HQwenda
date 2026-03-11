@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HQwenda - 金融行情问答</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>HQwenda</h1>
+            <p class="subtitle">金融行情数据智能问答</p>
+            <button id="new-session-btn" title="新建会话">+ 新会话</button>
+        </header>
+
+        <div id="chat-area">
+            <div id="messages"></div>
+        </div>
+
+        <div class="input-area">
+            <textarea
+                id="user-input"
+                placeholder="输入你的问题，如：贵州茅台最近的行情怎么样？"
+                rows="2"
+            ></textarea>
+            <button id="send-btn">发送</button>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
