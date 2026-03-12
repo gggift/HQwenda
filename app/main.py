@@ -1,5 +1,8 @@
+import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
+logging.basicConfig(level=logging.INFO)
 
 from app.api.chat import router
 

@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    deepseek_model: str = "deepseek-v3"
+    deepseek_model: str = "qwen-turbo"
     tushare_token: str
     max_history_rounds: int = 20
 

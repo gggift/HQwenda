@@ -10,7 +10,7 @@ def _get_client():
         from app.config import Settings
 
         settings = Settings()
-        _client = OpenAI(api_key=settings.deepseek_api_key, base_url=settings.deepseek_base_url)
+        _client = OpenAI(api_key=settings.deepseek_api_key, base_url=settings.deepseek_base_url, timeout=60)
     return _client
 
 

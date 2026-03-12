@@ -30,10 +30,15 @@ class SessionResponse(BaseModel):
 # run_agent and assemble_context make blocking HTTP calls to DeepSeek/Tushare.
 @router.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    system_prompt, messages = assemble_context(
-        req.message, req.session_id, session_manager, knowledge_loader
-    )
-    reply = run_agent(system_prompt, messages)
+    try:
+        system_prompt, messages = assemble_context(
+            req.message, req.session_id, session_manager, knowledge_loader
+        )
+        reply = run_agent(system_prompt, messages)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Agent error: {e}", exc_info=True)
+        reply = f"抱歉，处理请求时出错：{type(e).__name__}"
 
     # Save to session history
     session_manager.add_message(req.session_id, "user", req.message)

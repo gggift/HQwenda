@@ -11,6 +11,7 @@ def test_get_daily_quotes():
             "low": [9.8, 10.2],
             "close": [10.5, 10.8],
             "vol": [100000, 120000],
+            "amount": [5000000, 6000000],
             "pct_chg": [1.5, 2.86],
         }
     )
@@ -42,6 +43,7 @@ def test_get_weekly_monthly():
             "low": [9.5],
             "close": [10.8],
             "vol": [500000],
+            "amount": [2500000],
             "pct_chg": [3.0],
         }
     )

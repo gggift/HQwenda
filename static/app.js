@@ -76,18 +76,30 @@ async function sendMessage() {
   loadingDiv.classList.add("loading");
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+
     const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, message }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
     const data = await resp.json();
     loadingDiv.classList.remove("loading");
-    loadingDiv.innerHTML = renderMarkdown(data.reply);
+    loadingDiv.innerHTML = renderMarkdown(data.reply || "未获取到回答");
   } catch (err) {
     loadingDiv.classList.remove("loading");
-    loadingDiv.textContent = "请求失败，请稍后重试。";
+    if (err.name === "AbortError") {
+      loadingDiv.textContent = "请求超时（3分钟），请稍后重试。";
+    } else {
+      loadingDiv.textContent = `请求失败：${err.message}，请稍后重试。`;
+    }
   } finally {
     sendBtn.disabled = false;
     inputEl.focus();

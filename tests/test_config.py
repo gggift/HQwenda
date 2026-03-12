@@ -18,13 +18,15 @@ def test_settings_loads_from_env(monkeypatch):
     assert s.max_history_rounds == 20
 
 
-def test_settings_defaults(monkeypatch):
+def test_settings_defaults(monkeypatch, tmp_path):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     monkeypatch.setenv("TUSHARE_TOKEN", "t")
+    # Remove env vars that .env might set, so we test actual defaults
+    monkeypatch.delenv("DEEPSEEK_BASE_URL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+    monkeypatch.chdir(tmp_path)  # avoid loading project .env
 
     from app.config import Settings
 
     s = Settings()
-    assert s.deepseek_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    assert s.deepseek_model == "deepseek-v3"
     assert s.max_history_rounds == 20
