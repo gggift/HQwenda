@@ -72,6 +72,7 @@ def get_sw_daily(
     start_date: str = None,
     end_date: str = None,
 ) -> dict:
+    from datetime import datetime, timedelta
     pro = _get_pro()
     kwargs = {}
     if trade_date:
@@ -83,6 +84,15 @@ def get_sw_daily(
     if end_date:
         kwargs["end_date"] = end_date
     df = pro.sw_daily(**kwargs)
+    # Date fallback: if trade_date specified but no data, try previous days
+    if df.empty and trade_date and not ts_code:
+        dt = datetime.strptime(trade_date, "%Y%m%d")
+        for i in range(1, 5):
+            prev = (dt - timedelta(days=i)).strftime("%Y%m%d")
+            kwargs["trade_date"] = prev
+            df = pro.sw_daily(**kwargs)
+            if not df.empty:
+                break
     if df.empty:
         return {"data": [], "message": "无数据"}
 

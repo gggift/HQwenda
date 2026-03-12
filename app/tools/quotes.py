@@ -123,8 +123,18 @@ def get_weekly_monthly(
 def get_market_stats(
     trade_date: str, exchange: str = None, pct_chg_min: float = None, pct_chg_max: float = None
 ) -> dict:
+    from datetime import datetime, timedelta
     pro = _get_pro()
     df = pro.daily(trade_date=trade_date)
+    # Date fallback
+    if df.empty:
+        dt = datetime.strptime(trade_date, "%Y%m%d")
+        for i in range(1, 5):
+            prev = (dt - timedelta(days=i)).strftime("%Y%m%d")
+            df = pro.daily(trade_date=prev)
+            if not df.empty:
+                trade_date = prev
+                break
     if df.empty:
         return {"data": {}, "message": "无数据"}
     if exchange:
@@ -291,6 +301,7 @@ def get_historical_percentile(
     ts_code: str, indicator: str, days: int = 252, is_index: bool = False
 ) -> dict:
     pro = _get_pro()
+    return_note = None
 
     price_vol_indicators = {"close", "amount", "vol"}
     valuation_indicators = {"pe", "pb", "turnover_rate"}
@@ -301,7 +312,23 @@ def get_historical_percentile(
         else:
             df = pro.daily(ts_code=ts_code, fields=f"trade_date,{indicator}")
     elif indicator in valuation_indicators:
-        df = pro.daily_basic(ts_code=ts_code, fields=f"trade_date,{indicator}")
+        if is_index:
+            # Indices don't have daily_basic valuation data; use index_dailybasic if available
+            try:
+                df = pro.index_dailybasic(ts_code=ts_code, fields=f"trade_date,{indicator}")
+            except Exception:
+                # Fallback: for turnover_rate, estimate from amount
+                if indicator == "turnover_rate":
+                    df = pro.index_daily(ts_code=ts_code, fields="trade_date,amount")
+                    if not df.empty:
+                        indicator = "amount"
+                        return_note = "指数无直接换手率数据，使用成交额作为量能替代指标计算分位数"
+                    else:
+                        return {"data": {}, "message": "指数无换手率数据，且无法获取成交额数据"}
+                else:
+                    return {"data": {}, "message": f"指数暂不支持 {indicator} 指标的分位数计算"}
+        else:
+            df = pro.daily_basic(ts_code=ts_code, fields=f"trade_date,{indicator}")
     else:
         return {"data": {}, "message": f"不支持的指标: {indicator}，可选 close/amount/vol/pe/pb/turnover_rate"}
 
@@ -323,7 +350,7 @@ def get_historical_percentile(
     rank = sum(1 for v in values if v <= current)
     percentile = round(rank / len(values) * 100, 2)
 
-    return {
+    result = {
         "data": {
             "ts_code": ts_code,
             "indicator": indicator,
@@ -336,3 +363,6 @@ def get_historical_percentile(
             "days": len(values),
         }
     }
+    if return_note:
+        result["note"] = return_note
+    return result
