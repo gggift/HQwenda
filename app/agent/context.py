@@ -57,7 +57,8 @@ def assemble_context(
         "3. 涉及量能/成交额时，必须调用 get_index_daily 或 get_daily_quotes 获取真实成交额数据。",
         "4. 涉及历史分位数时，必须调用 get_historical_percentile 工具计算，不得说\"待计算\"。",
         "5. 涉及资金流向时，调用 get_northbound_flow 或 get_moneyflow 获取真实数据。",
-        "6. 如果某项数据确实无法获取，明确说明原因，不要用模拟数据替代。",
+        "6. 涉及期货行情时，先调用 get_fut_mapping 获取当前主力合约代码，再用该代码调用 get_fut_daily。不要猜测合约代码。",
+        "7. 如果某项数据确实无法获取，明确说明原因，不要用模拟数据替代。",
     ]
 
     if knowledge_docs:

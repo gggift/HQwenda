@@ -58,9 +58,11 @@ def get_northbound_flow(
             return {"data": [], "message": "无数据"}
         df = df.head(20)
         # Amount fields are in 百万元, convert to 亿元
+        import pandas as pd
         amount_cols = ["hgt", "sgt", "north_money", "ggt_ss", "ggt_sz", "south_money"]
         for col in amount_cols:
             if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
                 df[col] = (df[col] / 100).round(2)
         fields = [f for f in HSGT_FIELDS if f in df.columns]
         records = df[fields].to_dict("records")
