@@ -273,7 +273,7 @@ def get_realtime_quote(ts_code: str) -> dict:
 
 @tool(
     name="get_historical_percentile",
-    description="计算股票或指数当前价格/成交额/换手率/PE/PB等指标在历史区间中的分位数，判断是否处于历史高位或低位。",
+    description="计算股票或指数当前价格/成交额/换手率/PE/PB等指标在历史区间中的分位数，判断是否处于历史高位或低位。返回当前值的分位数排名，以及10%/25%/50%/75%/90%分位对应的具体数值。支持最多10年(2500个交易日)的回溯。",
     parameters={
         "type": "object",
         "properties": {
@@ -287,7 +287,7 @@ def get_realtime_quote(ts_code: str) -> dict:
             },
             "days": {
                 "type": "integer",
-                "description": "回溯交易日数，默认 252",
+                "description": "回溯交易日数，默认252（约1年）。可设为2500（约10年）、1250（约5年）、500（约2年）等",
             },
             "is_index": {
                 "type": "boolean",
@@ -343,12 +343,27 @@ def get_historical_percentile(
     if indicator == "amount":
         df[indicator] = (df[indicator] / 1e5).round(4)
 
+    import numpy as np
     values = df[indicator].tolist()
     current = values[0]
     min_val = round(min(values), 4)
     max_val = round(max(values), 4)
     rank = sum(1 for v in values if v <= current)
     percentile = round(rank / len(values) * 100, 2)
+
+    # Calculate key percentile breakpoints
+    arr = np.array(values)
+    key_percentiles = {
+        "p10": round(float(np.percentile(arr, 10)), 4),
+        "p25": round(float(np.percentile(arr, 25)), 4),
+        "p50_median": round(float(np.percentile(arr, 50)), 4),
+        "p75": round(float(np.percentile(arr, 75)), 4),
+        "p90": round(float(np.percentile(arr, 90)), 4),
+    }
+
+    # Date range info
+    date_start = df["trade_date"].iloc[-1] if "trade_date" in df.columns else None
+    date_end = df["trade_date"].iloc[0] if "trade_date" in df.columns else None
 
     result = {
         "data": {
@@ -358,9 +373,11 @@ def get_historical_percentile(
             "min": min_val,
             "max": max_val,
             "percentile": percentile,
+            "key_percentiles": key_percentiles,
             "is_at_high": current == max_val,
             "is_at_low": current == min_val,
             "days": len(values),
+            "date_range": f"{date_start} ~ {date_end}" if date_start else None,
         }
     }
     if return_note:
