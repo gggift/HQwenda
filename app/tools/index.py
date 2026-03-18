@@ -224,3 +224,107 @@ def get_index_global(ts_code: str = None, trade_date: str = None, start_date: st
     fields = ["ts_code", "trade_date", "open", "close", "high", "low", "pre_close", "pct_chg"]
     fields = [f for f in fields if f in df.columns]
     return {"data": df[fields].to_dict("records")}
+
+
+@tool(
+    name="get_consecutive_streak",
+    description="计算股票或指数的最长连续上涨/连续下跌天数，返回历史上前N段最长连续涨跌记录（起止日期、天数、累计涨跌幅）。适用于'连续上涨最长的时间'、'最长连跌记录'等问题。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "ts_code": {"type": "string", "description": "股票或指数代码，如 000001.SH（上证指数）"},
+            "direction": {"type": "string", "description": "方向：up（连涨）或 down（连跌），默认 up"},
+            "is_index": {"type": "boolean", "description": "是否为指数代码，默认 false；指数请传 true"},
+            "top_n": {"type": "integer", "description": "返回前N段最长记录，默认 10"},
+            "start_date": {"type": "string", "description": "起始日期，格式 YYYYMMDD，默认不限（查全部历史）"},
+            "end_date": {"type": "string", "description": "截止日期，格式 YYYYMMDD，默认不限"},
+        },
+        "required": ["ts_code"],
+    },
+)
+def get_consecutive_streak(
+    ts_code: str,
+    direction: str = "up",
+    is_index: bool = False,
+    top_n: int = 10,
+    start_date: str = None,
+    end_date: str = None,
+) -> dict:
+    pro = _get_pro()
+    kwargs = {"ts_code": ts_code, "fields": "trade_date,close,pct_chg"}
+    if start_date:
+        kwargs["start_date"] = start_date
+    if end_date:
+        kwargs["end_date"] = end_date
+
+    if is_index:
+        df = pro.index_daily(**kwargs)
+    else:
+        df = pro.daily(**kwargs)
+
+    if df.empty:
+        return {"data": [], "message": "无数据"}
+
+    # Sort ascending by date
+    df = df.sort_values("trade_date", ascending=True).reset_index(drop=True)
+    df = df.dropna(subset=["pct_chg"])
+
+    if df.empty:
+        return {"data": [], "message": "过滤后无数据"}
+
+    # Find all consecutive streaks
+    if direction == "down":
+        df["match"] = df["pct_chg"] < 0
+    else:
+        df["match"] = df["pct_chg"] > 0
+
+    streaks = []
+    streak_start = None
+    streak_len = 0
+
+    for i, row in df.iterrows():
+        if row["match"]:
+            if streak_start is None:
+                streak_start = i
+            streak_len += 1
+        else:
+            if streak_len > 0:
+                streaks.append((streak_start, i - 1, streak_len))
+            streak_start = None
+            streak_len = 0
+    # Handle streak at end
+    if streak_len > 0:
+        streaks.append((streak_start, len(df) - 1, streak_len))
+
+    if not streaks:
+        label = "连涨" if direction == "up" else "连跌"
+        return {"data": [], "message": f"未找到{label}记录"}
+
+    # Sort by streak length descending
+    streaks.sort(key=lambda x: x[2], reverse=True)
+    streaks = streaks[:top_n]
+
+    results = []
+    for s_start, s_end, s_len in streaks:
+        start_row = df.iloc[s_start]
+        end_row = df.iloc[s_end]
+        # Calculate cumulative return
+        start_close = df.iloc[s_start - 1]["close"] if s_start > 0 else start_row["close"]
+        end_close = end_row["close"]
+        cum_return = round((end_close - start_close) / start_close * 100, 2) if start_close else 0
+
+        results.append({
+            "start_date": start_row["trade_date"],
+            "end_date": end_row["trade_date"],
+            "days": s_len,
+            "start_close": round(float(start_close), 2),
+            "end_close": round(float(end_close), 2),
+            "cumulative_return_pct": cum_return,
+        })
+
+    label = "连涨" if direction == "up" else "连跌"
+    return {
+        "data": results,
+        "note": f"历史最长{label}前{len(results)}段记录，days=连续天数，cumulative_return_pct=累计涨跌幅(%)",
+        "total_trading_days": len(df),
+    }
