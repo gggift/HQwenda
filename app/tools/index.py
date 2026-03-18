@@ -333,3 +333,124 @@ def get_consecutive_streak(
         "note": f"历史最长{label}前{len(results)}段记录，days=连续天数，cumulative_return_pct=累计涨跌幅(%)",
         "total_trading_days": len(df),
     }
+
+
+@tool(
+    name="get_market_streak_rank",
+    description="全市场连续阳线/阴线/涨跌天数排名。扫描所有个股，找出连续天数最长的前N只股票。适用于'哪只股票连续阴线最多'、'全市场连续阳线排名'等跨个股比较问题。注意：此查询需遍历交易日数据，默认查最近2年。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "direction": {"type": "string", "description": "方向：up（连涨）、down（连跌）、yang（连续阳线，收盘>开盘）、yin（连续阴线，收盘<开盘），默认 yang"},
+            "start_date": {"type": "string", "description": "起始日期，格式 YYYYMMDD，默认2年前"},
+            "end_date": {"type": "string", "description": "截止日期，格式 YYYYMMDD，默认今天"},
+            "top_n": {"type": "integer", "description": "返回前N名，默认 10"},
+        },
+        "required": [],
+    },
+)
+def get_market_streak_rank(
+    direction: str = "yang",
+    start_date: str = None,
+    end_date: str = None,
+    top_n: int = 10,
+) -> dict:
+    import time as _time
+    pro = _get_pro()
+
+    if not end_date:
+        from datetime import date
+        end_date = date.today().strftime("%Y%m%d")
+    if not start_date:
+        dt_end = datetime.strptime(end_date, "%Y%m%d")
+        start_date = (dt_end - timedelta(days=730)).strftime("%Y%m%d")
+
+    # Get trading calendar
+    cal = pro.trade_cal(exchange='SSE', start_date=start_date, end_date=end_date, is_open='1', fields='cal_date')
+    if cal.empty:
+        return {"data": [], "message": "无交易日历数据"}
+    dates = sorted(cal['cal_date'].tolist())
+
+    direction_labels = {"up": "连涨", "down": "连跌", "yang": "连续阳线", "yin": "连续阴线"}
+    label = direction_labels.get(direction, "连续阳线")
+
+    # Track per-stock state: {ts_code: {current, max, max_start, max_end, current_start}}
+    stock_state = {}
+    processed = 0
+
+    for dt in dates:
+        try:
+            df = pro.daily(trade_date=dt, fields='ts_code,open,close,pct_chg')
+        except Exception:
+            _time.sleep(0.5)
+            try:
+                df = pro.daily(trade_date=dt, fields='ts_code,open,close,pct_chg')
+            except Exception:
+                continue
+        if df.empty:
+            continue
+
+        # Determine matching condition
+        if direction == "yin":
+            df["match"] = df["close"] < df["open"]
+        elif direction == "yang":
+            df["match"] = df["close"] > df["open"]
+        elif direction == "down":
+            df["match"] = df["pct_chg"] < 0
+        else:
+            df["match"] = df["pct_chg"] > 0
+
+        matched_codes = set(df.loc[df["match"], "ts_code"])
+        all_codes = set(df["ts_code"])
+
+        # Update streaks for all stocks that appeared today
+        for code in all_codes:
+            if code not in stock_state:
+                stock_state[code] = {"current": 0, "max": 0, "max_start": None, "max_end": None, "current_start": None}
+
+            state = stock_state[code]
+            if code in matched_codes:
+                if state["current"] == 0:
+                    state["current_start"] = dt
+                state["current"] += 1
+                if state["current"] > state["max"]:
+                    state["max"] = state["current"]
+                    state["max_start"] = state["current_start"]
+                    state["max_end"] = dt
+            else:
+                state["current"] = 0
+                state["current_start"] = None
+
+        processed += 1
+        # Rate limit: sleep every 50 calls
+        if processed % 50 == 0:
+            _time.sleep(0.3)
+
+    if not stock_state:
+        return {"data": [], "message": "无数据"}
+
+    # Rank by max streak
+    ranked = sorted(stock_state.items(), key=lambda x: x[1]["max"], reverse=True)[:top_n]
+
+    # Get stock names
+    try:
+        stock_df = pro.stock_basic(list_status='L', fields='ts_code,name')
+        name_map = stock_df.set_index('ts_code')['name'].to_dict() if not stock_df.empty else {}
+    except Exception:
+        name_map = {}
+
+    results = []
+    for code, state in ranked:
+        results.append({
+            "ts_code": code,
+            "name": name_map.get(code, ""),
+            "max_consecutive_days": state["max"],
+            "start_date": state["max_start"],
+            "end_date": state["max_end"],
+        })
+
+    return {
+        "data": results,
+        "note": f"全市场{label}天数前{len(results)}名，扫描{processed}个交易日，覆盖{len(stock_state)}只股票",
+        "date_range": f"{start_date} ~ {end_date}",
+    }
